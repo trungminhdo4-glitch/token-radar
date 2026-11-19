@@ -21,6 +21,10 @@ function arg(name: string, fallback: string): string {
 const inputArg = arg('input', '/input');
 const inputFile = inputArg.endsWith('.json') ? inputArg : join(inputArg, 'snapshot.json');
 const out = arg('output', process.env.MAKEFUN_OUTPUT_DIR ?? '/output');
+if (!existsSync(inputFile)) {
+  process.stderr.write(`token radar: no snapshot at ${inputFile}: pass --input <snapshot.json|dir>\n`);
+  process.exit(2);
+}
 const snapshot = JSON.parse(readFileSync(inputFile, 'utf8'));
 
 // Run the page's model in a sandboxed context: one code path for the board and the screen.
@@ -50,7 +54,17 @@ if (issue) {
 }
 
 mkdirSync(out, { recursive: true });
-writeFileSync(join(out, 'board.json'), JSON.stringify({ rows }) + '\n');
+const board = {
+  as_of: snapshot.as_of,
+  source: snapshot.source,
+  model: radar.model.version,
+  formula: 'implied = tvl_usd x peer_multiple(category) x momentum(change_7d) x runway(days tracked with no token)',
+  note: 'Each protocol listed records no token on DefiLlama; an implied value is this board\'s claim, not a forecast that a token will launch.',
+  comparables: radar.live.length,
+  parked: radar.parked.map((p: any) => ({ slug: p.slug, why: p.why })),
+  rows,
+};
+writeFileSync(join(out, 'board.json'), JSON.stringify(board) + '\n');
 writeFileSync(join(out, 'data.js'), `window.SNAPSHOT = ${JSON.stringify(snapshot)};\n`);
 
 function copyDir(from: string, to: string): string[] {
