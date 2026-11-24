@@ -13,20 +13,21 @@
   var COLS = [
     ['rank', '#', 'num'], ['name', 'Protocol', ''], ['tvl', 'TVL', 'num'], ['change', '7d', 'num'],
     ['age', 'Runway', 'num'], ['multiple', 'Peer ×', 'num'], ['implied', 'Implied value', 'num wide'],
-    ['ticket', '$1k ticket →', 'num'], ['cost', 'Plan cost', 'num']
+    ['cost', 'Est. network fees', 'num']
   ];
   var KEY = {
     rank: function (r) { return r.rank; }, name: function (r) { return r.name.toLowerCase(); },
     tvl: function (r) { return r.tvl_usd; }, change: function (r) { return r.change_7d === null ? -1e9 : r.change_7d; },
     age: function (r) { return r.factors.age_days === null ? -1 : r.factors.age_days; },
     multiple: function (r) { return r.factors.multiple; }, implied: function (r) { return r.implied_value_usd; },
-    ticket: function (r) { return r.factors.per_ticket; }, cost: function (r) { return r.plan.usd; }
+    cost: function (r) { return r.plan.usd; }
   };
 
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return '&#' + c.charCodeAt(0) + ';'; }); }
   function $(id) { return document.getElementById(id); }
   function days(d) { return d === null ? 'unknown' : d >= 365 ? (d / 365).toFixed(1) + ' y' : d + ' d'; }
   function x2(v) { return '×' + v.toFixed(2); }
+  function feeLabel(usd) { return usd === null ? 'Unknown' : '~' + money(usd); }
   function cls(v) { return v === null ? 'flat' : v > 0.5 ? 'up' : v < -0.5 ? 'down' : 'flat'; }
 
   /* ---- state in the hash ---- */
@@ -82,7 +83,12 @@
       return true;
     });
     var key = KEY[S.sort] || KEY.rank, dir = S.dir === 'desc' ? -1 : 1;
-    return rows.sort(function (a, b) { var x = key(a), y = key(b); return (x < y ? -1 : x > y ? 1 : a.rank - b.rank) * dir; });
+    return rows.sort(function (a, b) {
+      var x = key(a), y = key(b);
+      if (x === y) return a.rank - b.rank;
+      if (x === null || y === null) return x === null ? 1 : -1;
+      return (x < y ? -1 : 1) * dir;
+    });
   }
 
   function board() {
@@ -96,7 +102,7 @@
         return '<button class="chip' + (S.seg === s[0] ? ' on' : '') + '" data-seg="' + s[0] + '">' + esc(s[1]) + ' <i>' + n + '</i></button>';
       }).join('') + '</div>' +
       '<div class="controls">' +
-      '<input id="q" type="search" placeholder="Search protocol or category" value="' + esc(S.q) + '">' +
+      '<input id="q" type="text" inputmode="search" aria-label="Search protocol or category" placeholder="Search protocol or category" value="' + esc(S.q) + '">' +
       '<select id="cat" aria-label="Category">' + options(cats, S.cat, 'All categories') + '</select>' +
       '<select id="chain" aria-label="Chain">' + options(chains, S.chain, 'All chains') + '</select>' +
       '<select id="mom" aria-label="7-day momentum"><option value="">Any 7d trend</option><option value="up"' + (S.mom === 'up' ? ' selected' : '') + '>TVL growing</option><option value="down"' + (S.mom === 'down' ? ' selected' : '') + '>TVL shrinking</option></select>' +
@@ -121,8 +127,7 @@
       '<td class="num">' + days(f.age_days) + '</td>' +
       '<td class="num">' + x2(f.multiple) + '</td>' +
       '<td class="num wide"><div class="bar"><span style="width:' + w + '%"></span></div><b>' + money(r.implied_value_usd) + '</b></td>' +
-      '<td class="num">' + money(f.per_ticket) + '</td>' +
-      '<td class="num">' + money(r.plan.usd) + '<small>' + r.plan.days + ' d</small></td></tr>';
+      '<td class="num">' + feeLabel(r.plan.usd) + '<small>' + esc(r.plan.chain) + '</small></td></tr>';
   }
 
   /* ---- right rail: radar map and value mix of the rows in view ---- */
@@ -168,7 +173,7 @@
       '<h2>' + esc(r.name) + '</h2>' +
       '<p class="chainlist">' + r.chains.map(esc).join(' · ') + '</p>' +
       '<div class="hero"><div><span>Implied launch value</span><b>' + money(r.implied_value_usd) + '</b></div>' +
-      '<div><span>$1k ticket held to a launch</span><b>' + money(f.per_ticket) + '</b><small>at a ' + (M.community_share * 100) + '% community pool</small></div></div>' +
+      '<div><span>Estimated network fees</span><b>' + feeLabel(r.plan.usd) + '</b><small>' + esc(r.plan.chain) + ' · one test and exit</small></div></div>' +
       '<div class="dcols"><div>' + '<h3>How the value is built</h3><ol class="build">' + steps.map(function (s, i) {
         var tone = i === 0 ? '' : s[3] >= 1 ? ' up' : ' down';
         return '<li><span class="op">' + (i ? '×' : '') + '</span><div><b>' + s[0] + '</b><small>' + s[2] + '</small></div><em class="' + tone + '">' + s[1] + '</em></li>';
@@ -177,7 +182,7 @@
         ['Peer multiple at the all-category median ' + x2(radar.peers.global), r.implied_value_usd / f.multiple * radar.peers.global],
         ['7-day change counted flat', r.implied_value_usd / f.momentum],
         ['Runway at 3 years', r.implied_value_usd / f.runway * (M.runway_floor + M.runway_span * (1 - Math.exp(-1095 / M.runway_tau_days)))],
-        ['TVL down 30% (the stop rule)', r.implied_value_usd * 0.7]
+        ['TVL down 30%', r.implied_value_usd * 0.7]
       ].map(function (v) {
         var d = v[1] / r.implied_value_usd - 1;
         return '<tr><td>' + v[0] + '</td><td class="num">' + money(v[1]) + '</td><td class="num ' + cls(d * 100) + '">' + (d >= 0 ? '+' : '') + Math.round(d * 100) + '%</td></tr>';
@@ -186,9 +191,10 @@
       (peers.length ? '<table class="mini"><tr><th>Protocol</th><th class="num">Mcap</th><th class="num">TVL</th><th class="num">Mcap/TVL</th></tr>' + peers.map(function (l) {
         return '<tr><td>' + esc(l.name) + ' <small>' + esc(l.symbol || '') + '</small></td><td class="num">' + money(l.mcap_usd) + '</td><td class="num">' + money(l.tvl_usd) + '</td><td class="num">' + x2(l.multiple) + '</td></tr>';
       }).join('') + '</table>' : '<p class="note">No protocol in this category trades with a recorded market cap, so the all-category median ' + x2(radar.peers.global) + ' anchors it.</p>') +
-      '</div><div>' + '<h3>Farm plan <small>' + money(r.plan.usd) + ' est. cost · ' + Math.round(r.plan.minutes / 6) / 10 + ' h hands-on · ' + r.plan.days + ' days · on ' + esc(r.plan.chain) + '</small></h3>' +
+      '</div><div>' + '<h3>Farm plan <small>' + r.plan.minutes + ' min hands-on · ' + r.plan.days + '-day review</small></h3>' +
+      '<p class="note plan-note">Start with a free eligibility check. The snapshot has no campaign rules. Fee estimates cover network transactions and exclude funding, capital and protocol charges.</p>' +
       '<ol class="plan">' + r.plan.steps.map(function (s) {
-        return '<li><p>' + esc(s.text) + '</p><span class="c">' + esc(s.cost) + '</span><span class="t">' + esc(s.time) + '</span></li>';
+        return '<li><strong>' + esc(s.title) + '</strong><p>' + esc(s.text) + '</p><span class="c">' + esc(s.cost) + '</span><span class="t">' + esc(s.time) + '</span></li>';
       }).join('') + '</ol></div></div>' +
       '<p class="note">An implied value is this board\'s claim from the record as it stands, not a forecast that a token will launch. DefiLlama records no token for ' + esc(r.name) + '; a token it does not carry may still exist.</p>';
     $('close').onclick = function () { S.p = ''; sync(); };
@@ -219,7 +225,7 @@
       '<li><b>Peer multiple</b> median mcap/TVL of the trading protocols in the same category, blended in log space with ' + M.shrink_k + ' pseudo-peers at the all-category median ' + x2(radar.peers.global) + ', clamped to ' + M.multiple_min + '–' + M.multiple_max + '.</li>' +
       '<li><b>Momentum</b> e^(' + M.momentum_weight + ' × 7-day TVL change), the change clamped to ' + M.momentum_floor + '%…+' + M.momentum_cap + '%; unreported counts flat.</li>' +
       '<li><b>Runway</b> ' + M.runway_floor + ' + ' + M.runway_span + ' × (1 − e^(−days/' + M.runway_tau_days + ')): days since DefiLlama began tracking it with no token. Longer runway, more user history stored up for a launch.</li>' +
-      '<li><b>Ticket payout</b> implied × ' + (M.community_share * 100) + '% community pool × $' + M.ticket_usd + ' / TVL: what a $1k position held to a launch maps to.</li>' +
+      '<li><b>Farm plan</b> uses snapshot category and chains to suggest eligibility checks and a conditional participation route. Network fees are modeled per transaction. Eligibility, capital, funding fees and protocol charges depend on the live campaign.</li>' +
       '<li><b>Parked</b> no-token records in the categories Bridge, Canonical Bridge, Liquid Staking, Liquid Restaking, Restaked BTC or CEX, or with a version suffix, a wrapped/staked word or an exchange name, are listed apart.</li></ul>' +
       '<p class="note">No protocol name is special-cased: one function, RadarModel.build, scores every row, here and in main.ts.</p></section>' +
       '<section class="card"><h3>Peer multiples by category</h3><table class="mini"><tr><th>Category</th><th class="num">Trading peers</th><th class="num">Raw median</th><th class="num">Used</th></tr>' +

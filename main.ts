@@ -37,13 +37,13 @@ const rows: BoardRow[] = radar.rows.map((r: any) => ({
   slug: r.slug,
   name: r.name,
   implied_value_usd: r.implied_value_usd,
-  farm_steps: r.plan.steps.map((s: any) => `${s.text} Cost: ${s.cost}. Time: ${s.time}.`),
+  farm_steps: r.plan.steps.map((s: any) => `${s.title}. ${s.text} Cost: ${s.cost}. Time: ${s.time}.`),
   category: r.category,
   tvl_usd: r.tvl_usd,
   change_7d: r.change_7d,
   segment: r.segment,
   model: { peer_multiple: r.factors.multiple, momentum: r.factors.momentum, runway: r.factors.runway, age_days: r.factors.age_days },
-  plan_cost_usd: Math.round(r.plan.usd * 100) / 100,
+  plan_cost_usd: r.plan.usd === null ? null : Math.round(r.plan.usd * 100) / 100,
   plan_days: r.plan.days,
 }));
 

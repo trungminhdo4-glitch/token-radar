@@ -29,9 +29,7 @@
     runway_floor: 0.7,
     runway_span: 0.5,
     runway_tau_days: 365,
-    unknown_age_days: 180,
-    community_share: 0.1,
-    ticket_usd: 1000
+    unknown_age_days: 180
   };
 
   // Categories the house watchlist rule treats as products of a parent token, and the name tests it uses.
@@ -103,11 +101,9 @@
     var age = p.listed_at ? Math.max(0, daysBetween(p.listed_at, asOf)) : null;
     var runway = M.runway_floor + M.runway_span * (1 - Math.exp(-(age === null ? M.unknown_age_days : age) / M.runway_tau_days));
     var implied = Math.max(1, Math.round(p.tvl_usd * multiple * momentum * runway));
-    var pool = implied * M.community_share;
     return {
       multiple: multiple, peer_n: peer ? peer.n : 0, momentum: momentum, growth: growth, age_days: age,
-      runway: runway, implied: implied,
-      per_ticket: Math.round(pool * M.ticket_usd / p.tvl_usd)
+      runway: runway, implied: implied
     };
   }
 
@@ -122,7 +118,8 @@
   /** The playbook family a category farms like. */
   function family(cat) {
     var c = cat || '';
-    if (/Curator|Capital Allocator|Yield|Basis|Stablecoin Wrapper|CeDeFi|Leveraged|Options Vault|Indexes|Farm|Liquidity Manager|Governance/.test(c)) return 'vault';
+    if (/Curator|Capital Allocator/.test(c)) return 'curate';
+    if (/Yield|Basis|Stablecoin Wrapper|CeDeFi|Leveraged|Options Vault|Indexes|Farm|Liquidity Manager|Governance/.test(c)) return 'vault';
     if (/Lending|CDP|Collateral|Uncollateralized/.test(c)) return 'lend';
     if (/Dexs|Derivatives|Prediction|OTC|Interest Rate/.test(c)) return 'trade';
     if (/RWA|Insurance/.test(c)) return 'rwa';
@@ -131,44 +128,46 @@
     return 'vault';
   }
 
-  /** A farm plan: concrete steps, each with an estimated cost (USD), hands-on minutes and calendar days.
-   *  Every number is read off the row (chains, TVL, 7-day change, the model's ticket payout). */
-  function farmPlan(p, s) {
+  /** A conditional participation plan. The snapshot supports chain and category selection only. */
+  function farmPlan(p) {
     var ch = cheapestChain(p.chains), gas = ch.gas, chain = ch.chain;
-    var name = p.name, fam = family(p.category), t = M.ticket_usd;
-    var ppm = (t / p.tvl_usd * 1e6).toFixed(2), steps = [];
-    function step(text, usd, note, minutes, days) {
-      steps.push({ text: text, usd: usd, minutes: minutes, days: days,
-        cost: (usd === 0 ? '$0' : '~' + money(usd)) + (note ? ' + ' + note : ''),
+    var name = p.name, fam = family(p.category), steps = [];
+    function step(title, text, transactions, minutes, days) {
+      var usd = gas * transactions;
+      steps.push({ title: title, text: text, usd: usd, minutes: minutes, days: days,
+        cost: transactions === 0 ? '$0 network fees' : p.chains.length ? '~' + money(usd) + ' network fees' : 'Network fees unknown',
         time: (minutes >= 60 ? (minutes / 60).toFixed(1) + ' h' : minutes + ' min') + ' hands-on' + (days > 0 ? ', over ' + days + ' days' : '') });
     }
-    var bridge = chain === 'Ethereum' ? 0 : 3;
-    step('Open ' + name + ' from its DefiLlama page (a link you trust) and confirm it still records no token; read its docs for a points, XP or season programme and its audits before moving money.', 0, '', 20, 0);
-    step('Fund a fresh wallet on ' + chain + ', the cheapest of its ' + p.chains.length + ' chain' + (p.chains.length === 1 ? '' : 's') + ' (est. ' + money(gas) + ' a transaction), with a $' + t + ' ticket' + (bridge ? ', bridged from Ethereum or withdrawn from an exchange straight to ' + chain : '') + '.', bridge + gas, '', 20, 0);
-    if (fam === 'vault') {
-      step('Deposit the ticket into ' + name + "'s largest stablecoin or ETH vault (approve + deposit, 2 transactions). Your $" + t + ' is ' + ppm + ' ppm of its ' + money(p.tvl_usd) + ' TVL.', gas * 2, '', 5, 0);
-      step('Hold and check weekly: vault share price, any points page, and the 7-day TVL trend (now ' + fmtPct(p.change_7d) + '). Time in the vault usually weighs as much as size.', 0, 'opportunity cost of the ticket', 65, 90);
+    step('Verify eligibility', 'Find the official ' + name + ' docs through its DefiLlama listing. Look for a live campaign, eligible markets, supported chains and a deadline. Stop here if there is no published way to qualify.', 0, 20, 0);
+    step('Check the route', p.chains.length
+      ? 'Verify the campaign supports ' + chain + ', the snapshot chain with the lowest modeled fee. Check the minimum amount, funding route and withdrawal terms before depositing.'
+      : 'Confirm a supported chain, minimum amount and withdrawal terms before depositing. The snapshot supplies no chain for this protocol.', 0, 10, 0);
+    if (fam === 'curate') {
+      step('Find a curated vault', 'Confirm the campaign names a specific vault or lending market. Check which platform hosts it and whether the curator is listed in its official market directory.', 0, 15, 0);
+      step('Verify a minimum deposit', 'If the hosted vault qualifies, check its current cap, underlying markets and withdrawal liquidity. Test the minimum deposit and match the receipt to the campaign tracker.', 2, 15, 7);
+    } else if (fam === 'vault') {
+      step('Test an eligible vault', 'If deposits count, use the smallest accepted amount in a listed vault. Approve only that amount and confirm that the deposit appears in the campaign tracker.', 2, 10, 0);
+      step('Check redemption', 'Record any lockup, exit fee or queue. Check the vault share price and the tracker before the next weekly review.', 0, 10, 7);
     } else if (fam === 'lend') {
-      step('Supply the ticket as collateral on ' + name + ' (approve + supply), then borrow 25-30% in a stablecoin to register as a borrower; stay under half the liquidation limit.', gas * 3 + 4, 'borrow interest', 10, 0);
-      step('Repay and re-borrow once a month to stay an active account; recheck the health factor after any 10% move in the collateral.', gas * 6, '', 30, 90);
+      step('Check the supply market', 'Confirm whether supplying alone qualifies and which assets count. If it does, test an eligible market with its minimum supply and verify campaign credit.', 2, 10, 0);
+      step('Check withdrawal liquidity', 'Review the asset’s utilization and available liquidity before leaving a position open. If the campaign requires borrowing, reassess the plan with interest and liquidation risk included.', 0, 10, 7);
     } else if (fam === 'trade') {
-      step('Trade on ' + name + ': split the ticket into 5 round trips across the month (about $5k volume), using limit orders where offered to keep fees low.', 10 + gas * 10, '', 40, 30);
-      step('Keep a small open position or LP half the ticket in its deepest pair through month end; volume and active days are the usual points inputs on venues like this.', gas * 2, 'impermanent-loss risk', 20, 60);
+      step('Test an eligible action', 'Look up the eligible markets and the minimum trade size. If a trade you already intended qualifies, preview its fee and slippage and verify campaign credit afterwards.', 2, 10, 0);
+      step('Review progress', 'Check the campaign tracker against the trade receipt. Record any position close costs and avoid volume or activity that the campaign excludes.', 0, 10, 7);
     } else if (fam === 'rwa') {
-      step('Complete ' + name + "'s onboarding/KYC if it asks (ID and proof of address); real-world-asset issuers often gate deposits by country.", 0, '', 30, 3);
-      step('Subscribe the minimum the product allows (often $100-1000) and hold it: the asset yield pays you while you wait.', gas * 2, '', 10, 90);
+      step('Check access and redemption', 'Review the issuer’s location and onboarding rules, subscription minimum and redemption windows. Verify the issuer before sharing any identity documents.', 0, 30, 0);
+      step('Check subscription credit', 'If the issuer confirms eligibility and an acceptable redemption window, verify that a minimum subscription qualifies in the account tracker.', 2, 10, 7);
     } else if (fam === 'chain') {
-      step('Bridge to ' + name + ' and make 10 real transactions across its own apps (swap, lend, pay, mint), spread over separate weeks rather than one day.', gas * 10 + 2, '', 60, 28);
-      step('Keep a balance on the network and delegate or run a light node where offered: long-lived balances usually count more than bursts.', 0, 'parked capital', 30, 90);
+      step('Test a listed app', 'Check the campaign’s approved apps and routes. If it includes an app you already use, confirm one eligible action and save the transaction receipt.', 1, 15, 0);
+      step('Review campaign credit', 'Use the official tracker to confirm whether the receipt counted and record any minimum activity days stated in the rules.', 0, 10, 7);
     } else {
-      step('Stake the native asset through ' + name + ' (approve + stake) and note the unbonding period before committing.', gas * 2, 'unbonding delay', 10, 0);
-      step('Hold the receipt token and use it once in a listed DeFi integration; integrations are often counted separately.', gas * 3, '', 20, 75);
+      step('Check the eligible staking route', 'Verify the supported asset, minimum stake and unbonding delay. If the campaign explicitly credits staking, confirm that a minimum stake appears in the tracker.', 2, 10, 0);
+      step('Review withdrawal terms', 'Record the earliest exit date and any slashing or receipt-token price exposure before extending the position.', 0, 10, 7);
     }
-    step('Know the exit before you start: withdrawing to an exchange costs about ' + money(gas * 2) + ' on ' + chain + '. At this board\'s model a $' + t + ' ticket held to a launch maps to ~' + money(s.per_ticket) + ' of a 10% community pool.', gas * 2, '', 5, 0);
-    step('Stop rule: exit if TVL falls 30% below ' + money(p.tvl_usd) + ', if deposits are paused, or if an incident report appears; re-score with each new snapshot.', 0, '', 15, 90);
+    step('Plan the exit', 'Recheck if campaign credit disappears, withdrawals pause, an incident is reported, or TVL falls 30% from the snapshot to ' + money(p.tvl_usd * 0.7) + '. Confirm the official exit instructions before acting.', 2, 10, 0);
     var usd = 0, minutes = 0, days = 0;
     steps.forEach(function (x) { usd += x.usd; minutes += x.minutes; days = Math.max(days, x.days); });
-    return { steps: steps, usd: usd, minutes: minutes, days: days, chain: chain };
+    return { steps: steps, usd: p.chains.length ? usd : null, minutes: minutes, days: days, chain: chain };
   }
 
   function fmtPct(x) { return x === null || x === undefined ? 'unreported' : (x >= 0 ? '+' : '') + x.toFixed(1) + '%'; }
@@ -185,7 +184,7 @@
         parked.push({ slug: p.slug, name: p.name, category: p.category, chains: p.chains, tvl_usd: p.tvl_usd, change_7d: p.change_7d, why: why });
       } else if (recordsNoToken(p)) {
         var s = score(p, peers, snap.as_of);
-        var plan = farmPlan(p, s);
+        var plan = farmPlan(p);
         rows.push({
           slug: p.slug, name: p.name, category: p.category, chains: p.chains, tvl_usd: p.tvl_usd,
           change_7d: p.change_7d, listed_at: p.listed_at, watchlist: !!watch[p.slug],
