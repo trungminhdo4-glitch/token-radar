@@ -12,6 +12,7 @@ Token Radar ranks every protocol whose DefiLlama record shows no token by the la
 - **Separation**: protocols with trading tokens are kept off the board and serve as the comparables. No-token records that look like a product of a parent (bridges, liquid staking, CEX, wrapped/staked names) are listed apart as *parked*.
 - **Board**: all 40 watchlist protocols plus every other standalone no-token protocol, 198 rows in total. You can sort and filter by segment, category, chain and 7-day trend, open a detail drawer with the value build-up, sensitivity, peers and the farm plan, and see a radar map.
 - **Farm plans** start with a free campaign eligibility check and give category-specific steps for a conditional test, review and exit. Estimated network fees cover those transactions. Live campaign rules, capital requirements and protocol charges need separate confirmation.
+- **Compare plans** keeps the board's search, segment, category, chain and sort state and puts up to four plans side by side: participation conditions to clear, fee and time totals, and each costed step. The same `filtered()` pool feeds the board and the comparison.
 - No network and no dependencies. Two runs write the same bytes.
 
 ## Run it

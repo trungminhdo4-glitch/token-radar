@@ -165,9 +165,18 @@
       step('Review withdrawal terms', 'Record the earliest exit date and any slashing or receipt-token price exposure before extending the position.', 0, 10, 7);
     }
     step('Plan the exit', 'Recheck if campaign credit disappears, withdrawals pause, an incident is reported, or TVL falls 30% from the snapshot to ' + money(p.tvl_usd * 0.7) + '. Confirm the official exit instructions before acting.', 2, 10, 0);
+    // Participation conditions are checks to clear, not facts the snapshot proves. The compare view
+    // shows them side by side so a reader can tell what each plan assumes before committing funds.
+    var conditions = [
+      'A live campaign with published rules exists for ' + name,
+      'The campaign names an eligible ' + (fam === 'trade' ? 'market and trade size' : fam === 'rwa' ? 'issuer and subscription route' : 'vault or qualifying action'),
+      p.chains.length ? 'The campaign supports ' + chain + ' and a minimum amount is known' : 'A supported chain and minimum amount are confirmed',
+      'Withdrawal terms, exit liquidity and any lockup are reviewed',
+      'Only the smallest test amount is committed until credit appears in the tracker'
+    ];
     var usd = 0, minutes = 0, days = 0;
     steps.forEach(function (x) { usd += x.usd; minutes += x.minutes; days = Math.max(days, x.days); });
-    return { steps: steps, usd: p.chains.length ? usd : null, minutes: minutes, days: days, chain: chain };
+    return { steps: steps, conditions: conditions, usd: p.chains.length ? usd : null, minutes: minutes, days: days, chain: chain };
   }
 
   function fmtPct(x) { return x === null || x === undefined ? 'unreported' : (x >= 0 ? '+' : '') + x.toFixed(1) + '%'; }

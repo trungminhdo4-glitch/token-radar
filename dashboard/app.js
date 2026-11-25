@@ -32,7 +32,7 @@
 
   /* ---- state in the hash ---- */
   function readState() {
-    var s = { tab: 'board', seg: 'all', cat: '', chain: '', mom: '', q: '', sort: 'rank', dir: 'asc', p: '' };
+    var s = { tab: 'board', seg: 'all', cat: '', chain: '', mom: '', q: '', sort: 'rank', dir: 'asc', p: '', cmp: '' };
     location.hash.replace(/^#/, '').split('&').forEach(function (kv) {
       var i = kv.indexOf('=');
       if (i > 0) s[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1));
@@ -200,6 +200,36 @@
     $('close').onclick = function () { S.p = ''; sync(); };
   }
 
+  /* ---- side-by-side farm plans, from the same filtered pool as the board ---- */
+  function compare() {
+    var pool = filtered();
+    if (!S.cmp) { S.cmp = pool.slice(0, 3).map(function (r) { return r.slug; }).join(','); writeState(); }
+    var picked = S.cmp.split(',').filter(function (s) { return bySlug[s]; });
+    picked = picked.filter(function (s, i, a) { return a.indexOf(s) === i; }).slice(0, 4);
+    var picker = pool.slice(0, 16).map(function (r) {
+      return '<button class="pick' + (picked.indexOf(r.slug) >= 0 ? ' on' : '') + '" data-cmp="' + esc(r.slug) + '">' +
+        esc(r.name) + ' <i>#' + r.rank + '</i></button>';
+    }).join('');
+    var cards = picked.map(function (slug) {
+      var r = bySlug[slug], p = r.plan;
+      return '<section class="cmpcol"><header><span class="cmp-rank">#' + r.rank + '</span><h3>' + esc(r.name) + '</h3>' +
+        '<p class="pmeta">' + esc(r.category || 'Uncategorised') + ' · ' + money(r.implied_value_usd) + ' implied</p></header>' +
+        '<div class="cmpstats"><div><span>Fees</span><b>' + feeLabel(p.usd) + '</b></div>' +
+        '<div><span>Hands-on</span><b>' + p.minutes + ' min</b></div>' +
+        '<div><span>Review</span><b>' + p.days + ' d</b></div>' +
+        '<div><span>Cheap chain</span><b>' + esc(p.chain) + '</b></div></div>' +
+        '<h4>Participation conditions <small>clear before funding</small></h4><ul class="conds">' +
+        p.conditions.map(function (c) { return '<li>' + esc(c) + '</li>'; }).join('') + '</ul>' +
+        '<h4>Plan steps <small>cost · time</small></h4><ol class="cmpsteps">' +
+        p.steps.map(function (s) { return '<li><b>' + esc(s.title) + '</b><span>' + esc(s.cost) + ' · ' + esc(s.time) + '</span></li>'; }).join('') +
+        '</ol></section>';
+    }).join('');
+    $('view').innerHTML = '<p class="count">Same filters as the board · ' + pool.length + ' protocols in view · ' +
+      'pick up to four. Fees are network estimates; eligibility, capital and protocol charges depend on the live campaign.</p>' +
+      '<div class="picker">' + picker + '</div>' +
+      (cards ? '<div class="cmpgrid">' + cards + '</div>' : '<p class="empty">No protocol in view.</p>');
+  }
+
   /* ---- comparables, parked, model ---- */
   function live() {
     $('view').innerHTML = '<p class="count">Protocols whose token already trades. They are kept off the launch board and used as its yardstick: their mcap/TVL, per category, sets each pre-token protocol\'s peer multiple.</p>' +
@@ -239,15 +269,20 @@
     [].forEach.call(document.querySelectorAll('#tabs button'), function (b) {
       b.setAttribute('aria-selected', b.getAttribute('data-tab') === S.tab ? 'true' : 'false');
     });
-    ({ board: board, live: live, parked: parked, model: model }[S.tab] || board)();
+    ({ board: board, compare: compare, live: live, parked: parked, model: model }[S.tab] || board)();
     drawer();
   }
 
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-tab],[data-seg],[data-sort],[data-slug]');
+    var t = e.target.closest('[data-tab],[data-seg],[data-sort],[data-cmp],[data-slug]');
     if (e.target.id === 'scrim') { S.p = ''; return sync(); }
     if (!t) return;
-    if (t.dataset.tab) { S.tab = t.dataset.tab; S.p = ''; }
+    if (t.dataset.cmp) {
+      var cur = S.cmp ? S.cmp.split(',') : [], at = cur.indexOf(t.dataset.cmp);
+      if (at >= 0) cur.splice(at, 1);
+      else { cur.push(t.dataset.cmp); if (cur.length > 4) cur.shift(); }
+      S.cmp = cur.join(',');
+    } else if (t.dataset.tab) { S.tab = t.dataset.tab; S.p = ''; }
     else if (t.dataset.seg) S.seg = t.dataset.seg;
     else if (t.dataset.sort) {
       if (S.sort === t.dataset.sort) S.dir = S.dir === 'asc' ? 'desc' : 'asc';
